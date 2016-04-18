@@ -9,13 +9,19 @@ FROM openshift/base-centos7
 # ENV BUILDER_VERSION 1.0
 
 # TODO: Set labels used in OpenShift to describe the builder image
-#LABEL io.k8s.description="Platform for building xyz" \
-#      io.k8s.display-name="builder x.y.z" \
-#      io.openshift.expose-services="8080:http" \
-#      io.openshift.tags="builder,x.y.z,etc."
+LABEL io.k8s.description="Platform for building Ruby2.3” \
+      io.k8s.display-name="builder Ruby=2.3.0” \
+      io.openshift.expose-services="8080:http" \
+      io.openshift.tags="builder,Ruby,2.3.0”
 
-# TODO: Install required packages here:
-# RUN yum install -y ... && yum clean all -y
+
+RUN  wget https://cache.ruby-lang.org/pub/ruby/2.3/ruby-2.3.0.tar.gz \
+	&& tar -xvzf ruby-2.3.0.tar.gz \
+	&& cd ruby-2.3.0/ \
+	&& ./configure --disable-install-doc \
+	&& make -j"$(nproc)" \
+	&& make install 
+
 
 # TODO (optional): Copy the builder files into /opt/app-root
 # COPY ./<builder_folder>/ /opt/app-root/
