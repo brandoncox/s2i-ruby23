@@ -1,27 +1,63 @@
-#!/bin/bash -e
-#
-# S2I assemble script for the 'ruby2.3' image.
-# The 'assemble' script builds your application source so that it is ready to run.
-#
-# For more information refer to the documentation:
-#	https://github.com/openshift/source-to-image/blob/master/docs/builder_image.md
-#
+#!/bin/bash
 
-if [[ "$1" == "-h" ]]; then
-	# If the 'ruby2.3' assemble script is executed with '-h' flag,
-	# print the usage.
-	exec /usr/libexec/s2i/usage
-fi
+function rake_assets_precompile() {
+  [[ "$DISABLE_ASSET_COMPILATION" == "true" ]] && return
+  [ ! -f Gemfile ] && return
+  [ ! -f Rakefile ] && return
+  ! grep " rails " Gemfile.lock >/dev/null && return
+  ! grep " execjs " Gemfile.lock >/dev/null && return
+  ! bundle exec 'rake -T' | grep "assets:precompile" >/dev/null && return
 
-# Restore artifacts from the previous build (if they exist).
-#
-if [ "$(ls /tmp/artifacts/ 2>/dev/null)" ]; then
-  echo "---> Restoring build artifacts..."
-  mv /tmp/artifacts/. ./
-fi
+  echo "---> Starting asset compilation ..."
+  bundle exec rake assets:precompile
+}
 
-echo "---> Installing application source..."
+set -e
+
+export RACK_ENV=${RACK_ENV:-"production"}
+
+echo "---> Installing application source ..."
 cp -Rf /tmp/src/. ./
 
-echo "---> Building application from source..."
-# TODO: Add build steps for your application, eg npm install, bundle install
+echo "---> Building your Ruby application from source ..."
+if [ -f Gemfile ]; then
+  ADDTL_BUNDLE_ARGS=""
+  if [ -f Gemfile.lock ]; then
+    ADDTL_BUNDLE_ARGS="--deployment"
+  fi
+
+  if [[ "$RAILS_ENV" == "development" || "$RACK_ENV" == "development" ]]; then
+    BUNDLE_WITHOUT=${BUNDLE_WITHOUT:-"test"}
+  elif [[ "$RAILS_ENV" == "test" || "$RACK_ENV" == "test" ]]; then
+    BUNDLE_WITHOUT=${BUNDLE_WITHOUT:-"development"}
+  else
+    BUNDLE_WITHOUT=${BUNDLE_WITHOUT:-"development:test"}
+  fi
+
+  echo "---> Running 'bundle install ${ADDTL_BUNDLE_ARGS}' ..."
+  bundle install --path ./bundle ${ADDTL_BUNDLE_ARGS}
+
+  echo "---> Cleaning up unused ruby gems ..."
+  bundle clean -V
+fi
+
+if ! bundle exec rackup -h &>/dev/null; then
+  echo "WARNING: Rubygem Rack is not installed in the present image."
+  echo "         Add rack to your Gemfile in order to start the web server."
+fi
+
+if [[ "$RAILS_ENV" == "production" || "$RACK_ENV" == "production" ]]; then
+  rake_assets_precompile
+fi
+
+# Fix source directory permissions
+fix-permissions ./
+
+# Make the ./tmp folder world writeable as Rails or other frameworks might use
+# it to store temporary data (uploads/cache/sessions/etcd).
+# The ./db folder has to be writeable as well because when Rails complete the
+# migration it writes the schema version into ./db/schema.db
+set +e
+[[ -d ./tmp ]] && chgrp -R 0 ./tmp && chmod -R g+rw ./tmp
+[[ -d ./db ]] && chgrp -R 0 ./db && chmod -R g+rw ./db
+set -e

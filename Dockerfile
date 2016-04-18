@@ -13,6 +13,8 @@ LABEL io.k8s.description="Platform for building Ruby2.3” \
       io.openshift.expose-services="8080:http" \
       io.openshift.tags="builder,ruby,ruby23”
 
+EXPOSE 8080
+
 ENV RUBY_MAJOR 2.3
 ENV RUBY_VERSION 2.3.0
 ENV RUBYGEMS_VERSION 2.6.3
@@ -42,7 +44,7 @@ RUN mkdir -p "$GEM_HOME" "$BUNDLE_BIN" \
 
 CMD [ "irb" ]
 
-LABEL io.openshift.s2i.scripts-url=image:///usr/local/sti
+LABEL io.openshift.s2i.scripts-url=image:///usr/local/s2i
 
 # Copy the S2I scripts to /usr/libexec/s2i, since openshift/base-centos7 image sets io.openshift.s2i.scripts-url label that way, or update that label
 COPY ./.s2i/bin/ /usr/local/s2i
@@ -54,4 +56,4 @@ RUN chown -R 1001:1001 /opt/app-root
 USER 1001
 
 # Set the default CMD for the image
-CMD ["usage"]
+CMD $STI_SCRIPTS_PATH/usage
